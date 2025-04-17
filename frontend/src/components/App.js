@@ -16,14 +16,12 @@ import Signup from './SignUp';
 import { jwtDecode } from 'jwt-decode';
 import { authenticateUser } from '../actions/auth';
 import Settings from './Setting';
-
 import { useLocation } from 'react-router-dom';
 import UserProfile from './UserProfile';
 import { fetchUserFriends } from '../actions/friends';
 
 const PrivateRoute = ({ children, isLoggedin }) => {
-  const location = useLocation(); // ✅ Get current location
-
+  const location = useLocation();
   return isLoggedin ? (
     children
   ) : (
@@ -32,6 +30,11 @@ const PrivateRoute = ({ children, isLoggedin }) => {
 };
 
 class App extends React.Component {
+  state = {
+    isLoading: true,
+    error: null,
+  };
+
   componentDidUpdate(prevProps) {
     if (prevProps.auth.user?.id !== this.props.auth.user?.id) {
       if (this.props.auth.user) {
@@ -40,52 +43,54 @@ class App extends React.Component {
     }
   }
 
-  componentDidMount() {
-    this.props.dispatch(fetchPosts());
+  async componentDidMount() {
+    try {
+      await this.props.dispatch(fetchPosts());
+      const token = localStorage.getItem('token');
 
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const user = jwtDecode(token);
-        const currentTime = Date.now() / 1000; // Convert to seconds
+      if (token) {
+        try {
+          const user = jwtDecode(token);
+          const currentTime = Date.now() / 1000;
 
-        if (user.exp < currentTime) {
-          // Token expired
-          console.warn('Token expired, logging out user...');
-          this.handleLogout();
-        } else {
-          // Token is still valid
-          this.props.dispatch(
-            authenticateUser({
-              id: user.id,
-              name: user.name,
-              email: user.email,
-            }),
-          );
-
-          // Auto logout when the token expires
-          const timeToExpire = (user.exp - currentTime) * 1000;
-          this.autoLogoutTimer = setTimeout(() => {
-            console.warn('Token expired automatically, logging out user...');
+          if (user.exp < currentTime) {
+            console.warn('Token expired, logging out user...');
             this.handleLogout();
-          }, timeToExpire);
+          } else {
+            this.props.dispatch(
+              authenticateUser({
+                id: user.id,
+                name: user.name,
+                email: user.email,
+              }),
+            );
+
+            const timeToExpire = (user.exp - currentTime) * 1000;
+            this.autoLogoutTimer = setTimeout(() => {
+              console.warn('Token expired automatically, logging out user...');
+              this.handleLogout();
+            }, timeToExpire);
+          }
+          await this.props.dispatch(fetchUserFriends(user.id));
+        } catch (error) {
+          console.error('Invalid token:', error);
+          this.handleLogout();
         }
-        this.props.dispatch(fetchUserFriends(user.id));
-      } catch (error) {
-        console.error('Invalid token:', error);
-        this.handleLogout();
       }
+    } catch (error) {
+      console.error('Error initializing app:', error);
+      this.setState({ error: 'Failed to load application data' });
+    } finally {
+      this.setState({ isLoading: false });
     }
   }
 
-  // Logout function to clear token and redirect
   handleLogout = () => {
     localStorage.removeItem('token');
-    this.props.dispatch(authenticateUser(null)); // Clear auth state
-    window.location.href = '/login'; // Redirect to login page
+    this.props.dispatch(authenticateUser(null));
+    window.location.href = '/login';
   };
 
-  // Clear timeout when component unmounts
   componentWillUnmount() {
     if (this.autoLogoutTimer) {
       clearTimeout(this.autoLogoutTimer);
@@ -94,21 +99,27 @@ class App extends React.Component {
 
   render() {
     const { posts, auth, friends } = this.props;
-    console.log('friend in FriendsList: ', friends);
+    const { isLoading, error } = this.state;
+
+    if (isLoading) {
+      return <div>Loading...</div>;
+    }
+
+    if (error) {
+      return <div>Error: {error}</div>;
+    }
+
     return (
       <Router>
         <div>
-          <Navbar user={auth.user} />
+          <Navbar />
           <Routes>
             <Route
+              exact
               path="/"
               element={
                 <PrivateRoute isLoggedin={auth.isLoggedin}>
-                  <Home
-                    posts={posts}
-                    friends={friends}
-                    isLoggedin={auth.isLoggedin}
-                  />
+                  <Home posts={posts} friends={friends} />
                 </PrivateRoute>
               }
             />
@@ -123,14 +134,13 @@ class App extends React.Component {
               }
             />
             <Route
-              path="/user/:id"
+              path="/user/:userId"
               element={
                 <PrivateRoute isLoggedin={auth.isLoggedin}>
                   <UserProfile />
                 </PrivateRoute>
               }
             />
-
             <Route path="*" element={<Page404 />} />
           </Routes>
         </div>
@@ -139,16 +149,16 @@ class App extends React.Component {
   }
 }
 
+App.propTypes = {
+  posts: PropTypes.array.isRequired,
+  auth: PropTypes.object.isRequired,
+  friends: PropTypes.array.isRequired,
+};
+
 const mapStateToProps = (state) => ({
   posts: state.posts,
   auth: state.auth,
   friends: state.friends,
 });
-
-App.propTypes = {
-  posts: PropTypes.array.isRequired,
-  auth: PropTypes.object.isRequired,
-  dispatch: PropTypes.func.isRequired,
-};
 
 export default connect(mapStateToProps)(App);
