@@ -16,11 +16,13 @@
     "redux": "^5.0.1",
     "redux-logger": "^3.0.6",
     "socket.io-client": "^4.8.1",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "@jridgewell/sourcemap-codec": "^1.4.15",
+    "lru-cache": "^10.2.0"
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "GENERATE_SOURCEMAP=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
